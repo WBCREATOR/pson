@@ -1,56 +1,104 @@
 (function () {
 
-function extraerVariables(codigo) {
-    const matches = codigo.match(/\b[A-Z_][A-Z0-9_]*\b/g);
-    return matches ? [...new Set(matches)] : [];
-}
-
 function esVariableValida(nombre) {
     return /^[A-Z_][A-Z0-9_]*$/.test(nombre);
 }
 
-function resolverVariables(codigo, contexto = {}) {
-    const variables = extraerVariables(codigo);
+// Detecta asignaciones tipo: VAR = algo;
+function extraerAsignaciones(codigo) {
+    const regex = /^([A-Z_][A-Z0-9_]*)\s*=\s*(.+?);$/gm;
+    let match;
+    const asignaciones = [];
 
-    variables.forEach(nombre => {
+    while ((match = regex.exec(codigo)) !== null) {
+        asignaciones.push({
+            nombre: match[1],
+            valor: match[2]
+        });
+    }
+
+    return asignaciones;
+}
+
+function resolverExpresion(expr, contexto) {
+    return expr.replace(/\b[A-Z_][A-Z0-9_]*\b/g, (v) => {
+        if (!(v in contexto)) {
+            throw new Error(`Variable no definida: ${v}`);
+        }
+        return contexto[v];
+    });
+}
+
+function evaluarAsignaciones(codigo, contexto) {
+    const asignaciones = extraerAsignaciones(codigo);
+
+    asignaciones.forEach(({ nombre, valor }) => {
+
         if (!esVariableValida(nombre)) {
             throw new Error(`Variable inválida: ${nombre}`);
         }
 
-        if (!(nombre in contexto)) {
-            throw new Error(`Variable no definida: ${nombre}`);
+        let evaluado = valor.trim();
+
+        // Resolver variables dentro de la expresión
+        evaluado = resolverExpresion(evaluado, contexto);
+
+        // Si es operation(...)
+        if (evaluado.startsWith("operation(")) {
+            const contenido = evaluado.slice(10, -1);
+
+            try {
+                // ⚠️ evaluación matemática controlada
+                const resultado = Function(`return (${contenido})`)();
+                contexto[nombre] = resultado;
+            } catch {
+                throw new Error(`Operación inválida en ${nombre}`);
+            }
+        } else {
+            // valor directo
+            try {
+                contexto[nombre] = JSON.parse(evaluado);
+            } catch {
+                contexto[nombre] = evaluado;
+            }
         }
-
-        const valor = JSON.stringify(contexto[nombre]);
-
-        // reemplazo global seguro
-        const regex = new RegExp(`\\b${nombre}\\b`, 'g');
-        codigo = codigo.replace(regex, valor);
     });
 
-    return codigo;
+    return contexto;
 }
 
-// 👉 DEFINA SUS VARIABLES AQUÍ
-const CONTEXTO_PSON = {
-    LOKINOS_PRECIO: 500,
-    LOKINOS_COSTO: 300,
-    IVA: 19
-};
+function reemplazarVariablesFinal(codigo, contexto) {
+    return codigo.replace(/\b[A-Z_][A-Z0-9_]*\b/g, (v) => {
+        if (v in contexto) return JSON.stringify(contexto[v]);
+        return v;
+    });
+}
+
+function procesarPSON(codigo) {
+    const contexto = {};
+
+    // 🔥 1. evaluar variables dinámicas
+    evaluarAsignaciones(codigo, contexto);
+
+    // 🔥 2. reemplazar variables en todo el código
+    const codigoFinal = reemplazarVariablesFinal(codigo, contexto);
+
+    return codigoFinal;
+}
 
 function ejecutarPSONEnTags() {
     const bloques = document.querySelectorAll('plumescript[type="PSON"]');
 
     bloques.forEach((tag, index) => {
         try {
-            const codigo = tag.textContent.trim();
+            let codigo = tag.textContent.trim();
             if (!codigo) return;
 
-            const codigoProcesado = resolverVariables(codigo, CONTEXTO_PSON);
+            codigo = procesarPSON(codigo);
 
-            console.log("[DEBUG código procesado]", codigoProcesado);
+            console.log("[DEBUG FINAL]", codigo);
 
-            const resultado = PSON.parse(codigoProcesado);
+            const resultado = PSON.parse(codigo);
 
             console.log(`[PSON inline #${index}]`, resultado);
 
@@ -71,17 +119,15 @@ async function cargarArchivosPSON() {
 
         try {
             const res = await fetch(url);
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-            const texto = await res.text();
+            let texto = await res.text();
 
-            const codigoProcesado = resolverVariables(texto, CONTEXTO_PSON);
+            texto = procesarPSON(texto);
 
-            console.log("[DEBUG archivo procesado]", codigoProcesado);
+            console.log("[DEBUG FILE FINAL]", texto);
 
-            const resultado = PSON.parse(codigoProcesado);
+            const resultado = PSON.parse(texto);
 
             console.log(`[PSON file #${i}: ${url}]`, resultado);
 
@@ -93,7 +139,7 @@ async function cargarArchivosPSON() {
 
 function iniciar() {
     if (!window.PSON) {
-        console.error("[PSON] Motor no encontrado (pson.js no cargado)");
+        console.error("[PSON] Motor no encontrado");
         return;
     }
 
