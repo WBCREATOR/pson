@@ -1,30 +1,41 @@
 (function () {
 
+function extraerVariables(codigo) {
+    const matches = codigo.match(/\b[A-Z_][A-Z0-9_]*\b/g);
+    return matches ? [...new Set(matches)] : [];
+}
+
 function esVariableValida(nombre) {
     return /^[A-Z_][A-Z0-9_]*$/.test(nombre);
 }
 
 function resolverVariables(codigo, contexto = {}) {
-    return codigo.replace(/\b[A-Z_][A-Z0-9_]*\b/g, (match) => {
+    const variables = extraerVariables(codigo);
 
-        if (!esVariableValida(match)) {
-            throw new Error(`Variable inválida: ${match}`);
+    variables.forEach(nombre => {
+        if (!esVariableValida(nombre)) {
+            throw new Error(`Variable inválida: ${nombre}`);
         }
 
-        if (!(match in contexto)) {
-            throw new Error(`Variable no definida: ${match}`);
+        if (!(nombre in contexto)) {
+            throw new Error(`Variable no definida: ${nombre}`);
         }
 
-        return JSON.stringify(contexto[match]);
+        const valor = JSON.stringify(contexto[nombre]);
+
+        // reemplazo global seguro
+        const regex = new RegExp(`\\b${nombre}\\b`, 'g');
+        codigo = codigo.replace(regex, valor);
     });
+
+    return codigo;
 }
 
-// 👉 CONTEXTO GLOBAL DE VARIABLES (EDÍTELO AQUÍ)
+// 👉 DEFINA SUS VARIABLES AQUÍ
 const CONTEXTO_PSON = {
-    TOTAL: 100,
-    IVA: 19,
-    NOMBRE: "Samuel",
-    ACTIVO: true
+    LOKINOS_PRECIO: 500,
+    LOKINOS_COSTO: 300,
+    IVA: 19
 };
 
 function ejecutarPSONEnTags() {
@@ -35,8 +46,9 @@ function ejecutarPSONEnTags() {
             const codigo = tag.textContent.trim();
             if (!codigo) return;
 
-            // 🔥 Resolver variables antes de parsear
             const codigoProcesado = resolverVariables(codigo, CONTEXTO_PSON);
+
+            console.log("[DEBUG código procesado]", codigoProcesado);
 
             const resultado = PSON.parse(codigoProcesado);
 
@@ -65,8 +77,9 @@ async function cargarArchivosPSON() {
 
             const texto = await res.text();
 
-            // 🔥 Resolver variables en archivos
             const codigoProcesado = resolverVariables(texto, CONTEXTO_PSON);
+
+            console.log("[DEBUG archivo procesado]", codigoProcesado);
 
             const resultado = PSON.parse(codigoProcesado);
 
@@ -88,7 +101,6 @@ function iniciar() {
     cargarArchivosPSON();
 }
 
-// Auto-run seguro
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", iniciar);
 } else {
