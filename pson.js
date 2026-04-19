@@ -1,77 +1,98 @@
-(function(global){
+(function () {
 
-function safeEvalOperation(expr) {
-    // Solo permite números y operadores básicos
-    if (!/^[0-9+\-*/().\s]+$/.test(expr)) {
-        throw new Error("Operación inválida: " + expr);
-    }
-    return Function("return (" + expr + ")")();
+function esVariableValida(nombre) {
+    return /^[A-Z_][A-Z0-9_]*$/.test(nombre);
 }
 
-function parseValue(value) {
-    value = value.trim();
+function resolverVariables(codigo, contexto = {}) {
+    return codigo.replace(/\b[A-Z_][A-Z0-9_]*\b/g, (match) => {
 
-    // operation(...)
-    if (value.startsWith("operation(")) {
-        const inner = value.slice(10, -1);
-        return safeEvalOperation(inner);
-    }
-
-    if (value.startsWith('"') || value.startsWith("'")) {
-        return value.slice(1, -1);
-    }
-
-    if (value === "true") return true;
-    if (value === "false") return false;
-    if (value === "null") return null;
-
-    if (!isNaN(value)) return Number(value);
-
-    throw new Error("Valor inválido: " + value);
-}
-
-function parsePSON(input) {
-    const variables = {};
-
-    // 1. Variables
-    const varRegex = /(\w+)\s*=\s*(.*?);/g;
-    let match;
-
-    while ((match = varRegex.exec(input))) {
-        const name = match[1];
-        const rawValue = match[2];
-
-        variables[name] = parseValue(rawValue);
-    }
-
-    // 2. Reemplazar var(...)
-    input = input.replace(/var\((\w+)\)/g, (_, name) => {
-        if (!(name in variables)) {
-            throw new Error("Variable no definida: " + name);
+        if (!esVariableValida(match)) {
+            throw new Error(`Variable inválida: ${match}`);
         }
-        return JSON.stringify(variables[name]);
+
+        if (!(match in contexto)) {
+            throw new Error(`Variable no definida: ${match}`);
+        }
+
+        return JSON.stringify(contexto[match]);
     });
-
-    // 3. Resolver operation dentro del objeto
-    input = input.replace(/operation\((.*?)\)/g, (_, expr) => {
-        return JSON.stringify(safeEvalOperation(expr));
-    });
-
-    // 4. Extraer object(...)
-    const objMatch = input.match(/object\s*\(([\s\S]*)\);?/);
-    if (!objMatch) throw new Error("No se encontró object(...)");
-
-    let jsonLike = objMatch[1];
-
-    jsonLike = jsonLike.replace(/;/g, ",");
-    jsonLike = jsonLike.replace(/,\s*([}\]])/g, "$1");
-
-    return JSON.parse(jsonLike);
 }
 
-// Export global
-global.PSON = {
-    parse: parsePSON
+// 👉 CONTEXTO GLOBAL DE VARIABLES (EDÍTELO AQUÍ)
+const CONTEXTO_PSON = {
+    TOTAL: 100,
+    IVA: 19,
+    NOMBRE: "Samuel",
+    ACTIVO: true
 };
 
-})(window);
+function ejecutarPSONEnTags() {
+    const bloques = document.querySelectorAll('plumescript[type="PSON"]');
+
+    bloques.forEach((tag, index) => {
+        try {
+            const codigo = tag.textContent.trim();
+            if (!codigo) return;
+
+            // 🔥 Resolver variables antes de parsear
+            const codigoProcesado = resolverVariables(codigo, CONTEXTO_PSON);
+
+            const resultado = PSON.parse(codigoProcesado);
+
+            console.log(`[PSON inline #${index}]`, resultado);
+
+        } catch (e) {
+            console.error(`[PSON ERROR inline #${index}]`, e.message);
+        }
+    });
+}
+
+async function cargarArchivosPSON() {
+    const links = document.querySelectorAll('link[rel="pson"]');
+
+    for (let i = 0; i < links.length; i++) {
+        const link = links[i];
+        const url = link.getAttribute("href");
+
+        if (!url) continue;
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            const texto = await res.text();
+
+            // 🔥 Resolver variables en archivos
+            const codigoProcesado = resolverVariables(texto, CONTEXTO_PSON);
+
+            const resultado = PSON.parse(codigoProcesado);
+
+            console.log(`[PSON file #${i}: ${url}]`, resultado);
+
+        } catch (e) {
+            console.error(`[PSON ERROR file #${i}: ${url}]`, e.message);
+        }
+    }
+}
+
+function iniciar() {
+    if (!window.PSON) {
+        console.error("[PSON] Motor no encontrado (pson.js no cargado)");
+        return;
+    }
+
+    ejecutarPSONEnTags();
+    cargarArchivosPSON();
+}
+
+// Auto-run seguro
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", iniciar);
+} else {
+    iniciar();
+}
+
+})();
