@@ -57,7 +57,7 @@ PSON.parse = function (codigo) {
     objeto = objeto.replace(/,\s*}/g, "}");
 
     // DEBUG (IMPORTANTE)
-    console.log("[PSON DEBUG JSON]:", objeto);
+    console.log(":", objeto);
 
     // 7. Parsear
     return JSON.parse(objeto);
