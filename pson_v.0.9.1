@@ -3,59 +3,64 @@
 const PSON = {};
 
 PSON.parse = function (codigo) {
-    // Almacén de variables
+
     const variables = {};
 
-    // 1. Extraer variables tipo: NOMBRE = valor;
+    // 1. Extraer variables
     codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (match, nombre, valor) => {
-        try {
-            variables[nombre] = eval(valor);
-        } catch {
-            variables[nombre] = valor;
+        valor = valor.trim();
+
+        // Solo números por ahora (evita romper todo)
+        if (!isNaN(valor)) {
+            variables[nombre] = Number(valor);
+        } else {
+            throw new Error(`Valor inválido en variable ${nombre}: ${valor}`);
         }
-        return ""; // eliminar del código
+
+        return "";
     });
 
-    // 2. Reemplazar var(X)
+    // 2. Reemplazar var(...)
     codigo = codigo.replace(/var\(([^)]+)\)/g, (match, nombre) => {
         nombre = nombre.trim();
+
         if (!(nombre in variables)) {
             throw new Error(`Variable no definida: ${nombre}`);
         }
+
         return variables[nombre];
     });
 
     // 3. Evaluar operation(...)
-    codigo = codigo.replace(/operation\(([^)]+)\)/g, (match, expresion) => {
+    codigo = codigo.replace(/operation\(([^)]+)\)/g, (match, expr) => {
         try {
-            return eval(expresion);
+            // Evaluación controlada
+            return Function(`return (${expr})`)();
         } catch (e) {
-            throw new Error(`Error en operación: ${expresion}`);
+            throw new Error(`Error en operación: ${expr}`);
         }
     });
 
-    // 4. Convertir object({...}) → JSON
-    const matchObject = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
+    // 4. Buscar object(...)
+    const match = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
 
-    if (!matchObject) {
+    if (!match) {
         throw new Error("No se encontró object({...})");
     }
 
-    let objeto = matchObject[1];
+    let objeto = match[1];
 
-    // 5. Limpiar sintaxis tipo ; → ,
+    // 5. Convertir ; → ,
     objeto = objeto.replace(/;/g, ",");
 
-    // 6. Eliminar comas finales inválidas
+    // 6. Quitar coma final
     objeto = objeto.replace(/,\s*}/g, "}");
 
-    // 7. Parsear JSON
-    try {
-        return JSON.parse(objeto);
-    } catch (e) {
-        console.error("JSON generado:", objeto);
-        throw e;
-    }
+    // DEBUG (IMPORTANTE)
+    console.log("[PSON DEBUG JSON]:", objeto);
+
+    // 7. Parsear
+    return JSON.parse(objeto);
 };
 
 global.PSON = PSON;
