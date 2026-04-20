@@ -1,0 +1,63 @@
+(function (global) {
+
+const PSON = {};
+
+PSON.parse = function (codigo) {
+    // Almacén de variables
+    const variables = {};
+
+    // 1. Extraer variables tipo: NOMBRE = valor;
+    codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (match, nombre, valor) => {
+        try {
+            variables[nombre] = eval(valor);
+        } catch {
+            variables[nombre] = valor;
+        }
+        return ""; // eliminar del código
+    });
+
+    // 2. Reemplazar var(X)
+    codigo = codigo.replace(/var\(([^)]+)\)/g, (match, nombre) => {
+        nombre = nombre.trim();
+        if (!(nombre in variables)) {
+            throw new Error(`Variable no definida: ${nombre}`);
+        }
+        return variables[nombre];
+    });
+
+    // 3. Evaluar operation(...)
+    codigo = codigo.replace(/operation\(([^)]+)\)/g, (match, expresion) => {
+        try {
+            return eval(expresion);
+        } catch (e) {
+            throw new Error(`Error en operación: ${expresion}`);
+        }
+    });
+
+    // 4. Convertir object({...}) → JSON
+    const matchObject = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
+
+    if (!matchObject) {
+        throw new Error("No se encontró object({...})");
+    }
+
+    let objeto = matchObject[1];
+
+    // 5. Limpiar sintaxis tipo ; → ,
+    objeto = objeto.replace(/;/g, ",");
+
+    // 6. Eliminar comas finales inválidas
+    objeto = objeto.replace(/,\s*}/g, "}");
+
+    // 7. Parsear JSON
+    try {
+        return JSON.parse(objeto);
+    } catch (e) {
+        console.error("JSON generado:", objeto);
+        throw e;
+    }
+};
+
+global.PSON = PSON;
+
+})(window);
