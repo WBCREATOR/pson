@@ -1,64 +1,63 @@
-(function () {
+(function (global) {
 
-function ejecutarPSONEnTags() {
-    const bloques = document.querySelectorAll('plumescript[type="PSON"]');
+const PSON = {};
 
-    bloques.forEach((tag, index) => {
+PSON.parse = function (codigo) {
+    // Almacén de variables
+    const variables = {};
+
+    // 1. Extraer variables tipo: NOMBRE = valor;
+    codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (match, nombre, valor) => {
         try {
-            const codigo = tag.textContent.trim();
-            if (!codigo) return;
+            variables[nombre] = eval(valor);
+        } catch {
+            variables[nombre] = valor;
+        }
+        return ""; // eliminar del código
+    });
 
-            const resultado = PSON.parse(codigo);
+    // 2. Reemplazar var(X)
+    codigo = codigo.replace(/var\(([^)]+)\)/g, (match, nombre) => {
+        nombre = nombre.trim();
+        if (!(nombre in variables)) {
+            throw new Error(`Variable no definida: ${nombre}`);
+        }
+        return variables[nombre];
+    });
 
-            console.log(`[PSON inline #${index}]`, resultado);
-
+    // 3. Evaluar operation(...)
+    codigo = codigo.replace(/operation\(([^)]+)\)/g, (match, expresion) => {
+        try {
+            return eval(expresion);
         } catch (e) {
-            console.error(`[PSON ERROR inline #${index}]`, e.message);
+            throw new Error(`Error en operación: ${expresion}`);
         }
     });
-}
 
-async function cargarArchivosPSON() {
-    const links = document.querySelectorAll('link[rel="pson"]');
+    // 4. Convertir object({...}) → JSON
+    const matchObject = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
 
-    for (let i = 0; i < links.length; i++) {
-        const link = links[i];
-        const url = link.getAttribute("href");
-
-        if (!url) continue;
-
-        try {
-            const res = await fetch(url);
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-
-            const texto = await res.text();
-            const resultado = PSON.parse(texto);
-
-            console.log(`[PSON file #${i}: ${url}]`, resultado);
-
-        } catch (e) {
-            console.error(`[PSON ERROR file #${i}: ${url}]`, e.message);
-        }
-    }
-}
-
-function iniciar() {
-    if (!window.PSON) {
-        console.error("[PSON] Motor no encontrado (pson.js no cargado)");
-        return;
+    if (!matchObject) {
+        throw new Error("No se encontró object({...})");
     }
 
-    ejecutarPSONEnTags();
-    cargarArchivosPSON();
-}
+    let objeto = matchObject[1];
 
-// Auto-run seguro
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", iniciar);
-} else {
-    iniciar();
-}
+    // 5. Limpiar sintaxis tipo ; → ,
+    objeto = objeto.replace(/;/g, ",");
 
-})();
+    // 6. Eliminar comas finales inválidas
+    objeto = objeto.replace(/,\s*}/g, "}");
+
+    // 7. Parsear JSON
+    try {
+        return JSON.parse(objeto);
+    } catch (e) {
+        console.error("JSON generado:", objeto);
+        throw e;
+    }
+};
+
+global.PSON = PSON;
+
+})(window);
