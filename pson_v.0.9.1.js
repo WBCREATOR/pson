@@ -46,14 +46,13 @@ PSON.parse = function (codigo) {
 
     objeto = objeto.replace(/;/g, ",");
 
-
     objeto = objeto.replace(/\[\s*([^\]]+)\s*\]/g, (m, contenido) => {
         if (contenido.includes(":")) {
             return `{ ${contenido} }`;
         }
         return `[${contenido}]`;
     });
-    
+
     objeto = objeto.replace(/,\s*}/g, "}");
 
     console.log("[PSON DEBUG JS]:", objeto);
