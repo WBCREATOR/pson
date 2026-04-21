@@ -6,22 +6,19 @@ PSON.parse = function (codigo) {
 
     const variables = {};
 
-    // 1. Extraer variables
-    codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (match, nombre, valor) => {
+    codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (m, nombre, valor) => {
         valor = valor.trim();
 
-        // Solo números por ahora (evita romper todo)
         if (!isNaN(valor)) {
             variables[nombre] = Number(valor);
         } else {
-            throw new Error(`Valor inválido en variable ${nombre}: ${valor}`);
+            throw new Error(`Valor inválido en ${nombre}`);
         }
 
         return "";
     });
 
-    // 2. Reemplazar var(...)
-    codigo = codigo.replace(/var\(([^)]+)\)/g, (match, nombre) => {
+    codigo = codigo.replace(/var\(([^)]+)\)/g, (m, nombre) => {
         nombre = nombre.trim();
 
         if (!(nombre in variables)) {
@@ -31,17 +28,14 @@ PSON.parse = function (codigo) {
         return variables[nombre];
     });
 
-    // 3. Evaluar operation(...)
-    codigo = codigo.replace(/operation\(([^)]+)\)/g, (match, expr) => {
+    codigo = codigo.replace(/operation\(([^)]+)\)/g, (m, expr) => {
         try {
-            // Evaluación controlada
             return Function(`return (${expr})`)();
-        } catch (e) {
+        } catch {
             throw new Error(`Error en operación: ${expr}`);
         }
     });
 
-    // 4. Buscar object(...)
     const match = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
 
     if (!match) {
@@ -50,17 +44,26 @@ PSON.parse = function (codigo) {
 
     let objeto = match[1];
 
-    // 5. Convertir ; → ,
     objeto = objeto.replace(/;/g, ",");
 
-    // 6. Quitar coma final
+
+    objeto = objeto.replace(/\[\s*([^\]]+)\s*\]/g, (m, contenido) => {
+        if (contenido.includes(":")) {
+            return `{ ${contenido} }`;
+        }
+        return `[${contenido}]`;
+    });
+    
     objeto = objeto.replace(/,\s*}/g, "}");
 
-    // DEBUG (IMPORTANTE)
-    console.log(":", objeto);
+    console.log("[PSON DEBUG JS]:", objeto);
 
-    // 7. Parsear
-    return JSON.parse(objeto);
+    try {
+        return Function(`return (${objeto})`)();
+    } catch (e) {
+        console.error("Código JS generado:", objeto);
+        throw e;
+    }
 };
 
 global.PSON = PSON;
