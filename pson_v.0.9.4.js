@@ -6,6 +6,7 @@ PSON.parse = function (codigo) {
 
     const variables = {};
 
+    // 1. Variables
     codigo = codigo.replace(/([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g, (m, nombre, valor) => {
         valor = valor.trim();
 
@@ -18,7 +19,7 @@ PSON.parse = function (codigo) {
         return "";
     });
 
-    // 2. Reemplazar var(...)
+    // 2. var(...)
     codigo = codigo.replace(/var\(([^)]+)\)/g, (m, nombre) => {
         nombre = nombre.trim();
 
@@ -29,6 +30,7 @@ PSON.parse = function (codigo) {
         return variables[nombre];
     });
 
+    // 3. Variables directas
     codigo = codigo.replace(/\b([A-Z_][A-Z0-9_]*)\b/g, (match) => {
         if (match in variables) {
             return variables[match];
@@ -36,6 +38,7 @@ PSON.parse = function (codigo) {
         return match;
     });
 
+    // 4. operation(...)
     codigo = codigo.replace(/operation\(([^)]+)\)/g, (m, expr) => {
         try {
             return Function(`return (${expr})`)();
@@ -44,6 +47,7 @@ PSON.parse = function (codigo) {
         }
     });
 
+    // 5. object(...)
     const match = codigo.match(/object\s*\(\s*({[\s\S]*})\s*\)/);
 
     if (!match) {
@@ -55,18 +59,11 @@ PSON.parse = function (codigo) {
     objeto = objeto.replace(/;/g, ",");
     objeto = objeto.replace(/,\s*}/g, "}");
 
-    console.log("[PSON DEBUG JS]:", objeto);
-
+    // 6. Ejecutar como JS
     try {
-        const resultado = Function(`return (${objeto})`)();
-
-        console.log("Interpretación exitosa:", resultado);
-
-        return resultado;
-
+        return Function(`return (${objeto})`)();
     } catch (e) {
-        console.error("Código JS generado:", objeto);
-        throw e;
+        throw new Error("Error al generar objeto JS");
     }
 };
 
