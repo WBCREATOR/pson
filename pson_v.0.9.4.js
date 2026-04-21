@@ -12,12 +12,13 @@ PSON.parse = function (codigo) {
         if (!isNaN(valor)) {
             variables[nombre] = Number(valor);
         } else {
-            throw new Error(`Valor inválido en ${nombre}`);
+            throw new Error(`Valor inválido en ${nombre}: ${valor}`);
         }
 
         return "";
     });
 
+    // 2. Reemplazar var(...)
     codigo = codigo.replace(/var\(([^)]+)\)/g, (m, nombre) => {
         nombre = nombre.trim();
 
@@ -26,6 +27,13 @@ PSON.parse = function (codigo) {
         }
 
         return variables[nombre];
+    });
+
+    codigo = codigo.replace(/\b([A-Z_][A-Z0-9_]*)\b/g, (match) => {
+        if (match in variables) {
+            return variables[match];
+        }
+        return match;
     });
 
     codigo = codigo.replace(/operation\(([^)]+)\)/g, (m, expr) => {
@@ -45,20 +53,17 @@ PSON.parse = function (codigo) {
     let objeto = match[1];
 
     objeto = objeto.replace(/;/g, ",");
-
-    objeto = objeto.replace(/\[\s*([^\]]+)\s*\]/g, (m, contenido) => {
-        if (contenido.includes(":")) {
-            return `{ ${contenido} }`;
-        }
-        return `[${contenido}]`;
-    });
-
     objeto = objeto.replace(/,\s*}/g, "}");
 
-    console.log("Interpretación exitosa:\n", objeto);
+    console.log("[PSON DEBUG JS]:", objeto);
 
     try {
-        return Function(`return (${objeto})`)();
+        const resultado = Function(`return (${objeto})`)();
+
+        console.log("Interpretación exitosa:", resultado);
+
+        return resultado;
+
     } catch (e) {
         console.error("Código JS generado:", objeto);
         throw e;
