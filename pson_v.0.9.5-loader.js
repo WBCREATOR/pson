@@ -24,7 +24,6 @@ async function cargarArchivosPSON() {
 
             const resultado = await window.PSON.parse(texto);
 
-            // SOLO UN LOG
             console.log(resultado);
 
         } catch (e) {
@@ -45,7 +44,6 @@ function iniciar() {
     if (!window.PSON || typeof window.PSON.parse !== "function") {
 
         console.error("[PSON] Motor no encontrado");
-
         return;
 
     }
