@@ -22,7 +22,7 @@ async function cargarArchivosPSON() {
 
             const texto = await res.text();
 
-            const resultado = window.PSON.parse(texto);
+            const resultado = await window.PSON.parse(texto);
 
             // SOLO UN LOG
             console.log(resultado);
