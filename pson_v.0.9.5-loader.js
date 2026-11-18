@@ -8,6 +8,7 @@ async function cargarArchivosPSON() {
     for (let i = 0; i < links.length; i++) {
 
         const link = links[i];
+
         const url = link.getAttribute("href");
 
         if (!url) continue;
@@ -24,7 +25,7 @@ async function cargarArchivosPSON() {
 
             const resultado = await window.PSON.parse(texto);
 
-            console.log(resultado);
+            console.log("[PSON RESULT]:", resultado);
 
         } catch (e) {
 
@@ -41,9 +42,13 @@ async function cargarArchivosPSON() {
 
 function iniciar() {
 
-    if (!window.PSON || typeof window.PSON.parse !== "function") {
+    if (
+        !window.PSON ||
+        typeof window.PSON.parse !== "function"
+    ) {
 
         console.error("[PSON] Motor no encontrado");
+
         return;
 
     }
