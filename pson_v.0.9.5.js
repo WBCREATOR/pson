@@ -9,7 +9,7 @@ PSON.parse = function (codigo) {
 
     // 1. Variables and input declarations
     codigo = codigo.replace(
-        /([A-Z_][A-Z0-9_]*)\s*=\s*([^;]+);/g,
+        /([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\s*=\s*([^;]+);/g,
         (m, nombre, valor) => {
 
             valor = valor.trim();
@@ -27,7 +27,6 @@ PSON.parse = function (codigo) {
             if (textInput || intInput) {
 
                 const message = (textInput || intInput)[2];
-
                 const response = global.prompt(message);
 
                 if (response === null) {
@@ -76,15 +75,18 @@ PSON.parse = function (codigo) {
         return JSON.stringify(variables[nombre]);
     });
 
-    // 3. Direct variables
-    codigo = codigo.replace(/\b([A-Z_][A-Z0-9_]*)\b/g, (match) => {
+    // 3. Direct variable references
+    codigo = codigo.replace(
+        /\b([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\b/g,
+        (match) => {
 
-        if (match in variables) {
-            return JSON.stringify(variables[match]);
+            if (match in variables) {
+                return JSON.stringify(variables[match]);
+            }
+
+            return match;
         }
-
-        return match;
-    });
+    );
 
     // 4. operation(...)
     codigo = codigo.replace(/operation\(([^)]+)\)/g, (m, expr) => {
@@ -106,15 +108,23 @@ PSON.parse = function (codigo) {
 
     let objeto = match[1];
 
+    // 6. Convert semicolons into commas
     objeto = objeto.replace(/;/g, ",");
+
+    // 7. Remove trailing commas
     objeto = objeto.replace(/,\s*}/g, "}");
 
-    // 6. Generate JavaScript object
+    // 8. Generate JavaScript object
     try {
+
         return Function(`return (${objeto})`)();
+
     } catch (e) {
+
         console.error("Generated object:", objeto);
+
         throw new Error("Error al generar objeto JS: " + e.message);
+
     }
 
 };
