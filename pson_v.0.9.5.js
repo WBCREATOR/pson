@@ -3,22 +3,23 @@
 
 const PSON = {};
 
-let inputResolver = null;
-let inputCounter = 0;
+let inputQueue = [];
+let inputPending = null;
+let inputId = 0;
 
 // ============================================================
-// CONSOLE INPUT SYSTEM
+// CONSOLE INPUT
 // ============================================================
 
 PSON.answer = function (value) {
 
-    if (!inputResolver) {
-        console.error("[PSON ERROR]: No input is currently requested.");
+    if (!inputPending) {
+        console.error("[PSON] No hay ninguna entrada pendiente.");
         return;
     }
 
-    const resolve = inputResolver;
-    inputResolver = null;
+    const resolve = inputPending;
+    inputPending = null;
 
     resolve(value);
 
@@ -28,13 +29,13 @@ PSON.input = function (message) {
 
     return new Promise(resolve => {
 
-        inputCounter++;
+        inputPending = resolve;
+        inputId++;
 
-        inputResolver = resolve;
-
-        console.log(`[PSON INPUT #${inputCounter}] ${message}`);
+        console.log(`%c[PSON INPUT #${inputId}] ${message}`, "color:#00bfff;font-weight:bold");
         console.log(
-            `[PSON] Enter: PSON.answer("YOUR RESPONSE")`
+            `%cEscriba: PSON.answer("su respuesta")`,
+            "color:#aaa"
         );
 
     });
@@ -42,14 +43,12 @@ PSON.input = function (message) {
 };
 
 // ============================================================
-// PSON PARSER
+// PARSER
 // ============================================================
 
 PSON.parse = async function (codigo) {
 
     const variables = {};
-
-    // 1. Extract variable declarations
 
     const declarationRegex =
         /(^|[;\n])\s*([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\s*=\s*([^;\n]+);/g;
@@ -61,13 +60,9 @@ PSON.parse = async function (codigo) {
         const nombre = declaration[2];
         const valor = declaration[3].trim();
 
-        // Text input
-
         const textInput = valor.match(
             /^input\s*\(\s*(["'])([\s\S]*?)\1\s*\)$/
         );
-
-        // Integer input
 
         const intInput = valor.match(
             /^int\.input\s*\(\s*(["'])([\s\S]*?)\1\s*\)$/
@@ -118,12 +113,9 @@ PSON.parse = async function (codigo) {
 
     }
 
-    // 2. Remove variable declarations
-
     codigo = codigo.replace(declarationRegex, "");
 
-    // 3. Replace direct variable references
-    // Only replace identifiers outside quoted strings.
+    // Replace direct variables outside strings
 
     let resultado = "";
     let quote = null;
@@ -139,17 +131,11 @@ PSON.parse = async function (codigo) {
             resultado += char;
 
             if (escaped) {
-
                 escaped = false;
-
             } else if (char === "\\") {
-
                 escaped = true;
-
             } else if (char === quote) {
-
                 quote = null;
-
             }
 
             i++;
@@ -166,9 +152,7 @@ PSON.parse = async function (codigo) {
 
         }
 
-        const remaining = codigo.slice(i);
-
-        const variableMatch = remaining.match(
+        const variableMatch = codigo.slice(i).match(
             /^([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\b/
         );
 
@@ -193,52 +177,39 @@ PSON.parse = async function (codigo) {
 
     codigo = resultado;
 
-    // 4. Evaluate operation(...)
+    // operation(...)
 
     codigo = codigo.replace(
         /operation\(([^)]+)\)/g,
         (match, expresion) => {
 
             try {
-
                 return JSON.stringify(
                     Function(`return (${expresion})`)()
                 );
-
             } catch {
-
                 throw new Error(
                     `Error en operación: ${expresion}`
                 );
-
             }
 
         }
     );
 
-    // 5. Extract object({...})
+    // object(...)
 
     const matchObject = codigo.match(
         /object\s*\(\s*({[\s\S]*})\s*\)\s*;?/
     );
 
     if (!matchObject) {
-
         throw new Error("No se encontró object({...})");
-
     }
 
     let objeto = matchObject[1];
 
-    // 6. Convert PSON semicolons into commas
-
     objeto = objeto.replace(/;/g, ",");
-
-    // 7. Remove trailing commas
-
     objeto = objeto.replace(/,\s*}/g, "}");
-
-    // 8. Generate JavaScript object
 
     try {
 
