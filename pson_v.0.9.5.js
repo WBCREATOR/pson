@@ -3,22 +3,26 @@
 
 const PSON = {};
 
-let inputQueue = [];
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
 let inputPending = null;
-let inputId = 0;
+let inputCounter = 0;
 
 // ============================================================
-// CONSOLE INPUT
+// CONSOLE INPUT SYSTEM
 // ============================================================
 
 PSON.answer = function (value) {
 
     if (!inputPending) {
-        console.error("[PSON] No hay ninguna entrada pendiente.");
+        console.error("[PSON ERROR]: No input requested.");
         return;
     }
 
     const resolve = inputPending;
+
     inputPending = null;
 
     resolve(value);
@@ -29,13 +33,22 @@ PSON.input = function (message) {
 
     return new Promise(resolve => {
 
-        inputPending = resolve;
-        inputId++;
+        if (inputPending) {
+            throw new Error("Another input is already pending.");
+        }
 
-        console.log(`%c[PSON INPUT #${inputId}] ${message}`, "color:#00bfff;font-weight:bold");
+        inputPending = resolve;
+
+        inputCounter++;
+
         console.log(
-            `%cEscriba: PSON.answer("su respuesta")`,
-            "color:#aaa"
+            `%c[PSON INPUT #${inputCounter}] ${message}`,
+            "color:#00bfff;font-weight:bold;font-size:13px"
+        );
+
+        console.log(
+            '%cType: PSON.answer("your response")',
+            "color:#999"
         );
 
     });
@@ -43,26 +56,45 @@ PSON.input = function (message) {
 };
 
 // ============================================================
-// PARSER
+// VARIABLE NAME VALIDATION
+// ============================================================
+
+PSON.validVariable = function (name) {
+
+    return /^[A-Z][a-zA-Z0-9_]*$/.test(name) ||
+           /^_[A-Z][a-zA-Z0-9_]*$/.test(name);
+
+};
+
+// ============================================================
+// MAIN PARSER
 // ============================================================
 
 PSON.parse = async function (codigo) {
 
     const variables = {};
 
+    // --------------------------------------------------------
+    // 1. EXTRACT VARIABLES
+    // --------------------------------------------------------
+
     const declarationRegex =
-        /(^|[;\n])\s*([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\s*=\s*([^;\n]+);/g;
+        /^[ \t]*([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)[ \t]*=[ \t]*([^;\r\n]+);[ \t]*$/gm;
 
     const declarations = [...codigo.matchAll(declarationRegex)];
 
     for (const declaration of declarations) {
 
-        const nombre = declaration[2];
-        const valor = declaration[3].trim();
+        const nombre = declaration[1];
+        const valor = declaration[2].trim();
+
+        // TEXT INPUT
 
         const textInput = valor.match(
             /^input\s*\(\s*(["'])([\s\S]*?)\1\s*\)$/
         );
+
+        // INTEGER INPUT
 
         const intInput = valor.match(
             /^int\.input\s*\(\s*(["'])([\s\S]*?)\1\s*\)$/
@@ -80,11 +112,13 @@ PSON.parse = async function (codigo) {
 
                 if (
                     String(response).trim() === "" ||
-                    !Number.isInteger(number)
+                    !Number.isSafeInteger(number)
                 ) {
+
                     throw new Error(
-                        `Se esperaba un número entero en ${nombre}`
+                        `Invalid integer value in ${nombre}: ${response}`
                     );
+
                 }
 
                 variables[nombre] = number;
@@ -95,47 +129,65 @@ PSON.parse = async function (codigo) {
 
             }
 
+            continue;
+
+        }
+
+        // NUMERIC VALUES
+
+        if (valor.trim() !== "" && !isNaN(valor)) {
+
+            variables[nombre] = Number(valor);
+
         } else {
 
-            if (!isNaN(valor) && valor.trim() !== "") {
-
-                variables[nombre] = Number(valor);
-
-            } else {
-
-                throw new Error(
-                    `Valor inválido en ${nombre}: ${valor}`
-                );
-
-            }
+            throw new Error(
+                `Invalid value in ${nombre}: ${valor}`
+            );
 
         }
 
     }
 
+    // --------------------------------------------------------
+    // 2. REMOVE VARIABLE DECLARATIONS
+    // --------------------------------------------------------
+
     codigo = codigo.replace(declarationRegex, "");
 
-    // Replace direct variables outside strings
+    // --------------------------------------------------------
+    // 3. REPLACE DIRECT VARIABLE REFERENCES
+    // --------------------------------------------------------
 
     let resultado = "";
+
     let quote = null;
     let escaped = false;
+
     let i = 0;
 
     while (i < codigo.length) {
 
         const char = codigo[i];
 
-        if (quote) {
+        // INSIDE STRING
+
+        if (quote !== null) {
 
             resultado += char;
 
             if (escaped) {
+
                 escaped = false;
+
             } else if (char === "\\") {
+
                 escaped = true;
+
             } else if (char === quote) {
+
                 quote = null;
+
             }
 
             i++;
@@ -143,27 +195,40 @@ PSON.parse = async function (codigo) {
 
         }
 
+        // STRING START
+
         if (char === '"' || char === "'") {
 
             quote = char;
+
             resultado += char;
+
             i++;
             continue;
 
         }
 
+        // VARIABLE DETECTION
+
         const variableMatch = codigo.slice(i).match(
-            /^([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)\b/
+            /^([A-Z][a-zA-Z0-9_]*|_[A-Z][a-zA-Z0-9_]*)/
         );
 
         if (variableMatch) {
 
             const nombre = variableMatch[1];
 
-            if (Object.prototype.hasOwnProperty.call(variables, nombre)) {
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    variables,
+                    nombre
+                )
+            ) {
 
                 resultado += JSON.stringify(variables[nombre]);
+
                 i += nombre.length;
+
                 continue;
 
             }
@@ -171,61 +236,91 @@ PSON.parse = async function (codigo) {
         }
 
         resultado += char;
+
         i++;
 
     }
 
     codigo = resultado;
 
-    // operation(...)
+    // --------------------------------------------------------
+    // 4. OPERATION(...)
+    // --------------------------------------------------------
 
     codigo = codigo.replace(
         /operation\(([^)]+)\)/g,
         (match, expresion) => {
 
             try {
-                return JSON.stringify(
-                    Function(`return (${expresion})`)()
-                );
-            } catch {
+
+                const value = Function(
+                    `"use strict"; return (${expresion});`
+                )();
+
+                return JSON.stringify(value);
+
+            } catch (e) {
+
                 throw new Error(
-                    `Error en operación: ${expresion}`
+                    `Operation error: ${expresion}`
                 );
+
             }
 
         }
     );
 
-    // object(...)
+    // --------------------------------------------------------
+    // 5. EXTRACT OBJECT
+    // --------------------------------------------------------
 
     const matchObject = codigo.match(
         /object\s*\(\s*({[\s\S]*})\s*\)\s*;?/
     );
 
     if (!matchObject) {
-        throw new Error("No se encontró object({...})");
+
+        throw new Error(
+            "No se encontró object({...})"
+        );
+
     }
 
     let objeto = matchObject[1];
 
+    // --------------------------------------------------------
+    // 6. PSON SYNTAX CONVERSION
+    // --------------------------------------------------------
+
     objeto = objeto.replace(/;/g, ",");
+
     objeto = objeto.replace(/,\s*}/g, "}");
+
+    // --------------------------------------------------------
+    // 7. GENERATE JAVASCRIPT OBJECT
+    // --------------------------------------------------------
 
     try {
 
-        return Function(`return (${objeto})`)();
+        return Function(
+            `"use strict"; return (${objeto});`
+        )();
 
     } catch (e) {
 
-        console.error("Generated object:", objeto);
+        console.error("[PSON GENERATED OBJECT]:", objeto);
 
         throw new Error(
-            "Error al generar objeto JS: " + e.message
+            "Object generation error: " + e.message
         );
 
     }
 
 };
+
+// ============================================================
+// GLOBAL EXPORT
+// ============================================================
 
 global.PSON = PSON;
 
